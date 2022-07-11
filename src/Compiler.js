@@ -76,9 +76,9 @@ class Compiler {
     // console.log(dependencyGraph);
     /*
     {
-      '/Users/xqx359157/Works/demo/my-webpack/src/code/index.js': {
+      '/Users/home/Works/demo/my-webpack/src/code/index.js': {
         dependencies: {
-          './utils.js': '/Users/xqx359157/Works/demo/my-webpack/src/code/utils.js'
+          './utils.js': '/home/Works/demo/my-webpack/src/code/utils.js'
         },
         code: '"use strict";\n' +
           '\n' +
@@ -86,7 +86,7 @@ class Compiler {
           '\n' +
           'function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { "default": obj }; }'
       },
-      '/Users/xqx359157/Works/demo/my-webpack/src/code/utils.js': { dependencies: {}, code: '"use strict";' }
+      '/Users/home/Works/demo/my-webpack/src/code/utils.js': { dependencies: {}, code: '"use strict";' }
     }
     */
     this.generate(dependencyGraph);
