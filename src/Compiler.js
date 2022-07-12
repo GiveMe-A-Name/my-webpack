@@ -20,15 +20,55 @@ const Parser = {
   getDependencies(ast, filename) {
     const dependencies = {};
     traverse(ast, {
-      ImportDeclaration({ node }) {
+      ImportDeclaration({ node, scope }) {
         const dirname = path.dirname(filename);
         const filepath = path.join(dirname, node.source.value);
-        dependencies[node.source.value] = filepath;
+        const dependency = {
+          filepath,
+          imported: [],
+        };
+        traverse(
+          node,
+          {
+            ImportSpecifier({ node }) {
+              dependency.imported.push(node.imported.name);
+            },
+          },
+          scope
+        );
+        dependencies[node.source.value] = dependency;
       },
     });
     return dependencies;
   },
-  getCode(ast) {
+  getExports(ast) {
+    const exports = [];
+    traverse(ast, {
+      ExportNamedDeclaration({ node, scope }) {
+        traverse(
+          node,
+          {
+            ExportSpecifier({ node }) {
+              exports.push(node.exported.name);
+            },
+            VariableDeclarator({ node }) {
+              exports.push(node.id.name);
+            },
+            FunctionDeclaration({ node }) {
+              exports.push(node.id.name);
+            },
+            ClassDeclaration({ node }) {
+              exports.push(node.id.name);
+            },
+          },
+          scope
+        );
+      },
+    });
+    return exports;
+  },
+  getCode(ast, { imported, exports }) {
+    console.log(imported, exports);
     const { code } = transformFromAst(ast, null, {
       presets: ["@babel/preset-env"],
     });
@@ -50,7 +90,11 @@ class Compiler {
   }
 
   run() {
-    const info = this.build(this.entry);
+    const entryModule = {
+      filepath: this.entry,
+      imported: [],
+    };
+    const info = this.build(entryModule);
     // 将入口info推到modules中
     // 包括 filename, dependencies, code 字段
     this.modules.push(info);
@@ -61,18 +105,15 @@ class Compiler {
         }
       }
     });
-
     // 生成依赖关系图
-    const dependencyGraph = this.modules.reduce(
-      (graph, item) => ({
-        ...graph,
-        [item.filename]: {
-          dependencies: item.dependencies,
-          code: item.code,
-        },
-      }),
-      {}
-    );
+    // const dependencyGraph = this.modules.reduce((graph, item) => {
+    //   return {
+    //     ...graph,
+    //     [item.filepath]: {
+    //       dependencies: item.dependencies,
+    //     },
+    //   };
+    // }, {});
     // console.log(dependencyGraph);
     /*
     {
@@ -89,17 +130,29 @@ class Compiler {
       '/Users/home/Works/demo/my-webpack/src/code/utils.js': { dependencies: {}, code: '"use strict";' }
     }
     */
-    this.generate(dependencyGraph);
+    // this.generate(dependencyGraph);
   }
 
-  build(filename) {
-    const ast = Parser.getAst(filename);
-    const dependencies = Parser.getDependencies(ast, filename);
-    const code = Parser.getCode(ast);
+  /**
+   *
+   * @param {object} module
+   * @param {string} module.path
+   * @param {Array<*>} module.imported
+   * @returns
+   */
+  build({ filepath, imported }) {
+    const ast = Parser.getAst(filepath);
+    const dependencies = Parser.getDependencies(ast, filepath);
+    const exports = Parser.getExports(ast);
+    const code = Parser.getCode(ast, {
+      exports,
+      imported,
+    });
     return {
-      filename,
-      dependencies,
       code,
+      filepath,
+      dependencies,
+      exports,
     };
   }
 
