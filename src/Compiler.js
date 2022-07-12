@@ -67,8 +67,49 @@ const Parser = {
     });
     return exports;
   },
-  getCode(ast, { imported, exports }) {
-    console.log(imported, exports);
+  /**
+   *
+   * @param {*} ast
+   * @param {Array<string>} imported
+   */
+  removeNeedlessExports(ast, imported) {
+    traverse(ast, {
+      ExportNamedDeclaration(path) {
+        const { node, scope } = path;
+        traverse(
+          node,
+          {
+            ExportSpecifier(path) {
+              const { node } = path;
+              if (!imported.includes(node.exported.name)) {
+                path.remove();
+              }
+            },
+            VariableDeclarator(path) {
+              const { node } = path;
+              if (!imported.includes(node.id.name)) {
+                path.remove();
+              }
+            },
+            FunctionDeclaration(path) {
+              const { node } = path;
+              if (!imported.includes(node.id.name)) {
+                path.remove();
+              }
+            },
+            ClassDeclaration(path) {
+              const { node } = path;
+              if (!imported.includes(node.id.name)) {
+                path.remove();
+              }
+            },
+          },
+          scope
+        );
+      },
+    });
+  },
+  getCode(ast) {
     const { code } = transformFromAst(ast, null, {
       presets: ["@babel/preset-env"],
     });
@@ -106,31 +147,17 @@ class Compiler {
       }
     });
     // 生成依赖关系图
-    // const dependencyGraph = this.modules.reduce((graph, item) => {
-    //   return {
-    //     ...graph,
-    //     [item.filepath]: {
-    //       dependencies: item.dependencies,
-    //     },
-    //   };
-    // }, {});
-    // console.log(dependencyGraph);
-    /*
-    {
-      '/Users/home/Works/demo/my-webpack/src/code/index.js': {
-        dependencies: {
-          './utils.js': '/home/Works/demo/my-webpack/src/code/utils.js'
+    const dependencyGraph = this.modules.reduce((graph, item) => {
+      return {
+        ...graph,
+        [item.filepath]: {
+          dependencies: item.dependencies,
+          code: item.code,
         },
-        code: '"use strict";\n' +
-          '\n' +
-          'var _utils = _interopRequireDefault(require("./utils.js"));\n' +
-          '\n' +
-          'function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { "default": obj }; }'
-      },
-      '/Users/home/Works/demo/my-webpack/src/code/utils.js': { dependencies: {}, code: '"use strict";' }
-    }
-    */
-    // this.generate(dependencyGraph);
+      };
+    }, {});
+    // console.log(dependencyGraph);
+    this.generate(dependencyGraph);
   }
 
   /**
@@ -143,16 +170,12 @@ class Compiler {
   build({ filepath, imported }) {
     const ast = Parser.getAst(filepath);
     const dependencies = Parser.getDependencies(ast, filepath);
-    const exports = Parser.getExports(ast);
-    const code = Parser.getCode(ast, {
-      exports,
-      imported,
-    });
+    Parser.removeNeedlessExports(ast, imported);
+    const code = Parser.getCode(ast);
     return {
       code,
       filepath,
       dependencies,
-      exports,
     };
   }
 
