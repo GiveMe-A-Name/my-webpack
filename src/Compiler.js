@@ -1,41 +1,11 @@
 const fs = require("fs");
 const path = require("path");
-const parser = require("@babel/parser");
-const traverse = require("@babel/traverse").default;
-const { transformFromAst } = require("@babel/core");
-
-const Parser = {
-  /**
-   *
-   * @param {string} path - file path
-   */
-  getAst(path) {
-    // 读取入口文件
-    const content = fs.readFileSync(path, "utf-8");
-    // 将文件内容转为AST抽象语法树
-    return parser.parse(content, {
-      sourceType: "module",
-    });
-  },
-  getDependencies(ast, filename) {
-    const dependencies = {};
-    traverse(ast, {
-      ImportDeclaration({ node }) {
-        const dirname = path.dirname(filename);
-        const filepath = path.join(dirname, node.source.value);
-        dependencies[node.source.value] = filepath;
-      },
-    });
-    return dependencies;
-  },
-  getCode(ast) {
-    const { code } = transformFromAst(ast, null, {
-      presets: ["@babel/preset-env"],
-    });
-    return code;
-  },
-};
-
+const {
+  getAst,
+  getDependencies,
+  removeNeedlessExports,
+  getCode,
+} = require("./parser");
 class Compiler {
   /**
    *
@@ -44,13 +14,17 @@ class Compiler {
    */
   constructor(options) {
     const { entry, output } = options;
-    this.entry = path.resolve(__dirname, entry);
+    this.entry = path.resolve(__dirname, "..", entry);
     this.output = output;
     this.modules = [];
   }
 
   run() {
-    const info = this.build(this.entry);
+    const entryModule = {
+      filepath: this.entry,
+      imported: [],
+    };
+    const info = this.build(entryModule);
     // 将入口info推到modules中
     // 包括 filename, dependencies, code 字段
     this.modules.push(info);
@@ -61,45 +35,36 @@ class Compiler {
         }
       }
     });
-
     // 生成依赖关系图
-    const dependencyGraph = this.modules.reduce(
-      (graph, item) => ({
+    const dependencyGraph = this.modules.reduce((graph, item) => {
+      return {
         ...graph,
-        [item.filename]: {
+        [item.filepath]: {
           dependencies: item.dependencies,
           code: item.code,
         },
-      }),
-      {}
-    );
+      };
+    }, {});
     // console.log(dependencyGraph);
-    /*
-    {
-      '/Users/home/Works/demo/my-webpack/src/code/index.js': {
-        dependencies: {
-          './utils.js': '/home/Works/demo/my-webpack/src/code/utils.js'
-        },
-        code: '"use strict";\n' +
-          '\n' +
-          'var _utils = _interopRequireDefault(require("./utils.js"));\n' +
-          '\n' +
-          'function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { "default": obj }; }'
-      },
-      '/Users/home/Works/demo/my-webpack/src/code/utils.js': { dependencies: {}, code: '"use strict";' }
-    }
-    */
     this.generate(dependencyGraph);
   }
 
-  build(filename) {
-    const ast = Parser.getAst(filename);
-    const dependencies = Parser.getDependencies(ast, filename);
-    const code = Parser.getCode(ast);
+  /**
+   *
+   * @param {object} module
+   * @param {string} module.filepath
+   * @param {Array<*>} module.imported
+   * @returns
+   */
+  build({ filepath, imported }) {
+    const ast = getAst(filepath);
+    const dependencies = getDependencies(ast, filepath);
+    removeNeedlessExports(ast, imported);
+    const code = getCode(ast);
     return {
-      filename,
-      dependencies,
       code,
+      filepath,
+      dependencies,
     };
   }
 
@@ -108,7 +73,7 @@ class Compiler {
     const bundle = `(function(graph) {
       function require(module) {
         function localRequire(relativePath) {
-          return require(graph[module].dependencies[relativePath])
+          return require(graph[module].dependencies[relativePath].filepath)
         }
         var exports = {};
         (function(require, exports, code) {
@@ -118,6 +83,9 @@ class Compiler {
       }
       require('${this.entry}');
     })(${JSON.stringify(graph)});`;
+    if (!fs.existsSync(this.output.path)) {
+      fs.mkdirSync(this.output.path);
+    }
     fs.writeFileSync(filepath, bundle, "utf-8");
   }
 }
