@@ -52,7 +52,7 @@ class Compiler {
   /**
    *
    * @param {object} module
-   * @param {string} module.path
+   * @param {string} module.filepath
    * @param {Array<*>} module.imported
    * @returns
    */
@@ -73,7 +73,7 @@ class Compiler {
     const bundle = `(function(graph) {
       function require(module) {
         function localRequire(relativePath) {
-          return require(graph[module].dependencies[relativePath])
+          return require(graph[module].dependencies[relativePath].filepath)
         }
         var exports = {};
         (function(require, exports, code) {
